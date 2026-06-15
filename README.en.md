@@ -12,6 +12,7 @@ Korean Version: [README.md](README.md)
 - Direct editing for commit subject, body, and footer.
 - Regenerate messages with an additional instruction.
 - Uses commitlint-style hints and `sem` when configured.
+- Handles filenames with Unicode, spaces, and other special characters.
 - Choose priority between staged and unstaged changes.
 - Heuristic message generation when the AI model is unavailable.
 - On failure, print the error and stop the loop.
