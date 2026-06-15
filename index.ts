@@ -96,6 +96,9 @@ type CommitResult =
 
 type ShellResult = { ok: boolean; stdout: string; stderr: string; exitCode?: number };
 type UserAction = "proceed" | "edit" | "regenerate" | "cancel";
+type ProgressStepState = "pending" | "active" | "done" | "failed";
+type ProgressStep = { label: string; state: ProgressStepState; detail?: string };
+type ProgressView = { title: string; steps: ProgressStep[] };
 
 export default function piGitCommit(pi: ExtensionAPI) {
 	pi.registerCommand("git-commit", {
@@ -104,51 +107,79 @@ export default function piGitCommit(pi: ExtensionAPI) {
 	});
 }
 
+function setProgressWidget(ctx: ExtensionCommandContext, view?: ProgressView) {
+	ctx.ui.setWidget("pi-git-commit", view ? renderProgressView(view) : undefined);
+}
+
+function renderProgressView(view: ProgressView) {
+	return [
+		`pi-git-commit — ${view.title}`,
+		...view.steps.map((step) => `${progressIcon(step.state)} ${step.label}${step.detail ? `\n  ${step.detail}` : ""}`),
+	];
+}
+
+function progressIcon(state: ProgressStepState) {
+	if (state === "done") return "✓";
+	if (state === "active") return "⟳";
+	if (state === "failed") return "✗";
+	return "○";
+}
+
 async function runCommitWizard(ctx: ExtensionCommandContext) {
 	if (!ctx.hasUI) return ctx.ui.notify("/git-commit requires an interactive UI.", "error");
 
-	const cwd = ctx.cwd;
-	const repoCheck = await git(cwd, ["rev-parse", "--is-inside-work-tree"]);
-	if (!repoCheck.ok || repoCheck.stdout.trim() !== "true") return ctx.ui.notify("Not inside a Git repository.", "error");
+	try {
+		const cwd = ctx.cwd;
+		setProgressWidget(ctx, { title: "Starting", steps: [{ label: "Check Git repository", state: "active" }] });
+		const repoCheck = await git(cwd, ["rev-parse", "--is-inside-work-tree"]);
+		if (!repoCheck.ok || repoCheck.stdout.trim() !== "true") return ctx.ui.notify("Not inside a Git repository.", "error");
 
-	const config = await loadConfig(cwd, ctx);
-	const notes: string[] = [];
-	let proposal: CommitProposal | undefined;
-	let selectedMode: CommitMode | undefined;
+		const config = await loadConfig(cwd, ctx);
+		const notes: string[] = [];
+		let proposal: CommitProposal | undefined;
+		let selectedMode: CommitMode | undefined;
 
-	while (true) {
-		const state = await collectGitState(cwd, config);
-		if (!state.status.trim()) return ctx.ui.notify("No changes to commit.", "info");
+		while (true) {
+			setProgressWidget(ctx, { title: "Collecting Git state", steps: [{ label: "Collect Git status, diff, staged diff, and recent log", state: "active" }] });
+			const state = await collectGitState(cwd, config);
+			if (!state.status.trim()) return ctx.ui.notify("No changes to commit.", "info");
 
-		if (!selectedMode) {
-			selectedMode = await chooseCommitMode(ctx, state);
-			if (!selectedMode) return ctx.ui.notify("Commit cancelled.", "info");
-		}
+			if (!selectedMode) {
+				setProgressWidget(ctx, { title: "Choosing commit scope", steps: [{ label: "Git state collected", state: "done" }, { label: "Choose staged-only or all working tree changes", state: "active" }] });
+				selectedMode = await chooseCommitMode(ctx, state);
+				if (!selectedMode) return ctx.ui.notify("Commit cancelled.", "info");
+			}
 
-		if (!proposal) proposal = await buildProposal(ctx, state, config, notes, selectedMode);
-		if (proposal.commits.length === 0) return ctx.ui.notify("Could not build a commit proposal from the current changes.", "warning");
+			if (!proposal) proposal = await buildProposal(ctx, state, config, notes, selectedMode);
+			if (proposal.commits.length === 0) return ctx.ui.notify("Could not build a commit proposal from the current changes.", "warning");
 
-		const action = await askUser(ctx, proposal);
-		if (action === "cancel") return ctx.ui.notify("Commit cancelled.", "info");
-		if (action === "edit") {
-			proposal = await editCommitMessages(ctx, proposal);
-			continue;
-		}
-		if (action === "regenerate") {
-			const note = await ctx.ui.editor("Regenerate with instruction", "");
-			if (note?.trim()) notes.push(note.trim());
-			proposal = undefined;
-			continue;
-		}
+			setProgressWidget(ctx, { title: "Waiting for approval", steps: [{ label: "Commit proposal generated", state: "done", detail: `${proposal.commits.length} commit(s), ${proposal.source}` }, { label: "Review proposal", state: "active" }] });
+			const action = await askUser(ctx, proposal);
+			if (action === "cancel") return ctx.ui.notify("Commit cancelled.", "info");
+			if (action === "edit") {
+				proposal = await editCommitMessages(ctx, proposal);
+				continue;
+			}
+			if (action === "regenerate") {
+				const note = await ctx.ui.editor("Regenerate with instruction", "");
+				if (note?.trim()) notes.push(note.trim());
+				proposal = undefined;
+				continue;
+			}
 
-		const result = await executeCommits(cwd, proposal);
-		if (result.ok) {
-			ctx.ui.notify(`Commit created:\n${result.summaries.map((summary) => `* ${summary}`).join("\n")}`, "info");
+			const result = await executeCommits(cwd, proposal, (view) => setProgressWidget(ctx, view));
+			if (result.ok) {
+				setProgressWidget(ctx, { title: "Done", steps: result.summaries.map((summary) => ({ label: summary, state: "done" })) });
+				ctx.ui.notify(`Commit created:\n${result.summaries.map((summary) => `* ${summary}`).join("\n")}`, "info");
+				return;
+			}
+
+			setProgressWidget(ctx, { title: "Failed", steps: [{ label: `Commit failed (${result.reason})`, state: "failed" }] });
+			ctx.ui.notify(formatCommitFailureNotification(result), "error");
 			return;
 		}
-
-		ctx.ui.notify(formatCommitFailureNotification(result), "error");
-		return;
+	} finally {
+		setProgressWidget(ctx);
 	}
 }
 
@@ -204,10 +235,25 @@ async function collectGitState(cwd: string, config: GitCommitConfig): Promise<Gi
 }
 
 async function buildProposal(ctx: ExtensionCommandContext, state: GitState, config: GitCommitConfig, notes: string[], mode: CommitMode): Promise<CommitProposal> {
+	const fileCount = parseStatusFiles(state.status, mode).length;
+	setProgressWidget(ctx, {
+		title: "Generating proposal",
+		steps: [
+			{ label: "Git state collected", state: "done" },
+			{ label: "Build AI commit proposal", state: "active", detail: `model: ${ctx.model?.id ?? "fallback"}, mode: ${mode}, files: ${fileCount}` },
+		],
+	});
 	ctx.ui.setStatus("pi-git-commit", `Generating commit proposal with ${ctx.model?.id ?? "fallback"}...`);
 	const result = await buildProposalWithModel(ctx, state, config, notes, mode);
 	ctx.ui.setStatus("pi-git-commit", "");
 	if (result.proposal) return result.proposal;
+	setProgressWidget(ctx, {
+		title: "Using heuristic fallback",
+		steps: [
+			{ label: "AI proposal unavailable", state: "failed", detail: result.reason },
+			{ label: "Build heuristic commit proposal", state: "active" },
+		],
+	});
 	ctx.ui.notify(`AI proposal unavailable; using heuristic fallback. ${result.reason}`, "warning");
 	return { ...buildHeuristicProposal(state, config, notes, mode), fallbackReason: result.reason };
 }
@@ -380,12 +426,21 @@ function readPipeBlock(lines: string[], key: "body" | "footer") {
 	return cleanOptionalText(collected.join("\n"));
 }
 
-async function executeCommits(cwd: string, proposal: CommitProposal): Promise<CommitResult> {
+async function executeCommits(cwd: string, proposal: CommitProposal, onProgress?: (view: ProgressView) => void): Promise<CommitResult> {
 	let stdout = "";
 	let stderr = "";
 	const summaries: string[] = [];
-	for (const commit of proposal.commits) {
+	for (const [index, commit] of proposal.commits.entries()) {
+		const prefix = `Commit ${index + 1}/${proposal.commits.length}`;
+		onProgress?.({
+			title: "Executing commits",
+			steps: [
+				...summaries.map((summary) => ({ label: summary, state: "done" as const })),
+				{ label: `${prefix}: ${commit.message}`, state: "active", detail: `files: ${commit.files.length}` },
+			],
+		});
 		if (proposal.mode === "all-changes") {
+			onProgress?.({ title: "Executing commits", steps: [...summaries.map((summary) => ({ label: summary, state: "done" as const })), { label: `${prefix}: stage files`, state: "active", detail: commit.files.map((file) => `- ${file}`).join("\n") }] });
 			const addResult = await git(cwd, ["add", "--", ...commit.files]);
 			stdout += addResult.stdout;
 			stderr += addResult.stderr;
@@ -394,6 +449,7 @@ async function executeCommits(cwd: string, proposal: CommitProposal): Promise<Co
 		const args = ["commit", "-m", commit.message];
 		if (commit.body) args.push("-m", commit.body);
 		if (commit.footer) args.push("-m", commit.footer);
+		onProgress?.({ title: "Executing commits", steps: [...summaries.map((summary) => ({ label: summary, state: "done" as const })), { label: `${prefix}: git commit`, state: "active", detail: commit.message }] });
 		const commitResult = await git(cwd, args);
 		stdout += commitResult.stdout;
 		stderr += commitResult.stderr;
