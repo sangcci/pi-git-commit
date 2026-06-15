@@ -155,6 +155,20 @@ body: |
 footer: |
 ```
 
+## 버전 관리
+
+릴리즈 버전은 [Semantic Versioning](https://semver.org/)을 따르고, Git tag로 관리합니다.
+
+- tag 형식: `vMAJOR.MINOR.PATCH` 예: `v0.1.0`
+- 변경 내역: [CHANGELOG.md](CHANGELOG.md)
+- 안정 버전을 사용하려면 원하는 tag를 checkout합니다.
+
+```bash
+git checkout v0.1.0
+```
+
+개발 중 최신 변경을 따라가려면 `main` 브랜치를 사용하면 됩니다.
+
 ## 설정
 
 설정 파일은 선택 사항입니다.

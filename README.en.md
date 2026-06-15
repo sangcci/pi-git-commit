@@ -155,6 +155,20 @@ body: |
 footer: |
 ```
 
+## Versioning
+
+Release versions follow [Semantic Versioning](https://semver.org/) and are managed with Git tags.
+
+- Tag format: `vMAJOR.MINOR.PATCH`, for example `v0.1.0`
+- Change history: [CHANGELOG.md](CHANGELOG.md)
+- To use a stable version, checkout the desired tag.
+
+```bash
+git checkout v0.1.0
+```
+
+Use the `main` branch if you want the latest development changes.
+
 ## Configuration
 
 The config file is optional.
