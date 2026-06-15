@@ -82,6 +82,13 @@ type CommitPlan = {
 	rationale: string;
 };
 
+type StatusEntry = {
+	index: string;
+	workingTree: string;
+	path: string;
+	originalPath?: string;
+};
+
 type CommitProposal = {
 	commits: CommitPlan[];
 	notes: string[];
@@ -221,7 +228,7 @@ async function readConfigFile(path: string, ctx: ExtensionCommandContext): Promi
 async function collectGitState(cwd: string, config: GitCommitConfig): Promise<GitState> {
 	const [branch, status, diff, stagedDiff, recentLog] = await Promise.all([
 		git(cwd, ["branch", "--show-current"]),
-		git(cwd, ["status", "--porcelain=v1"]),
+		git(cwd, ["status", "--porcelain=v1", "-z"]),
 		git(cwd, ["diff", "--"]),
 		git(cwd, ["diff", "--staged", "--"]),
 		git(cwd, ["log", "--oneline", "-n", "20"]),
@@ -278,7 +285,7 @@ async function buildProposalWithModel(ctx: ExtensionCommandContext, state: GitSt
 
 function buildModelInput(state: GitState, config: GitCommitConfig, notes: string[], allowedFiles: string[], mode: CommitMode) {
 	const messageLanguage = config.message?.language ?? "en";
-	return JSON.stringify({ branch: state.branch, mode, messageLanguage, languageInstruction: `Write commit subject, body, and footer in ${messageLanguage}. Keep conventional commit type/scope tokens in English.`, allowedFiles, status: state.status, diff: truncate(mode === "staged-only" ? state.stagedDiff : `${state.stagedDiff}\n${state.diff}`, MAX_DIFF_CHARS), recentLog: state.recentLog, sem: state.sem, config, notes }, null, 2);
+	return JSON.stringify({ branch: state.branch, mode, messageLanguage, languageInstruction: `Write commit subject, body, and footer in ${messageLanguage}. Keep conventional commit type/scope tokens in English.`, allowedFiles, status: formatStatusForDisplay(state.status), diff: truncate(mode === "staged-only" ? state.stagedDiff : `${state.stagedDiff}\n${state.diff}`, MAX_DIFF_CHARS), recentLog: state.recentLog, sem: state.sem, config, notes }, null, 2);
 }
 
 function parseAiProposal(text: string, allowedFiles: string[], mode: CommitMode, notes: string[], config: GitCommitConfig): CommitProposal | undefined {
@@ -321,15 +328,47 @@ function buildHeuristicProposal(state: GitState, config: GitCommitConfig, notes:
 }
 
 function parseStatusFiles(status: string, mode: CommitMode): string[] {
-	return unique(status.split("\n").map((line) => line.trimEnd()).filter(Boolean).filter((line) => mode === "all-changes" || (line[0] !== " " && line[0] !== "?")).map(statusPath).filter(Boolean));
+	return unique(parseStatusEntries(status).filter((entry) => mode === "all-changes" || (entry.index !== " " && entry.index !== "?")).map((entry) => entry.path));
 }
 
-function statusPath(line: string) {
-	return line.slice(3).replace(/^.* -> /, "");
+function parseStatusEntries(status: string): StatusEntry[] {
+	if (!status) return [];
+	return status.includes("\0") ? parseNullDelimitedStatus(status) : parseLineDelimitedStatus(status);
+}
+
+function formatStatusForDisplay(status: string) {
+	return parseStatusEntries(status).map((entry) => `${entry.index}${entry.workingTree} ${entry.originalPath ? `${entry.originalPath} -> ${entry.path}` : entry.path}`).join("\n");
+}
+
+function parseNullDelimitedStatus(status: string): StatusEntry[] {
+	const fields = status.split("\0").filter(Boolean);
+	const entries: StatusEntry[] = [];
+	for (let i = 0; i < fields.length; i++) {
+		const field = fields[i];
+		if (field.length < 4) continue;
+		const index = field[0];
+		const workingTree = field[1];
+		const path = field.slice(3);
+		if ((index === "R" || index === "C") && i + 1 < fields.length) {
+			entries.push({ index, workingTree, path, originalPath: fields[++i] });
+		} else {
+			entries.push({ index, workingTree, path });
+		}
+	}
+	return entries;
+}
+
+function parseLineDelimitedStatus(status: string): StatusEntry[] {
+	return status.split("\n").map((line) => line.trimEnd()).filter(Boolean).map((line) => {
+		const index = line[0] ?? " ";
+		const workingTree = line[1] ?? " ";
+		const path = line.slice(3).replace(/^.* -> /, "");
+		return { index, workingTree, path };
+	});
 }
 
 function findMixedFiles(status: string) {
-	return status.split("\n").map((line) => line.trimEnd()).filter((line) => line && line[0] !== " " && line[1] !== " " && line[0] !== "?" && line[1] !== "?").map(statusPath);
+	return parseStatusEntries(status).filter((entry) => entry.index !== " " && entry.workingTree !== " " && entry.index !== "?" && entry.workingTree !== "?").map((entry) => entry.path);
 }
 
 function groupFiles(files: string[]) {
@@ -492,7 +531,7 @@ function truncate(value: string, max: number) {
 
 async function git(cwd: string, args: string[]): Promise<ShellResult> {
 	try {
-		const { stdout, stderr } = await execFileAsync("git", args, { cwd, maxBuffer: 1024 * 1024 * 20 });
+		const { stdout, stderr } = await execFileAsync("git", ["-c", "core.quotepath=false", ...args], { cwd, maxBuffer: 1024 * 1024 * 20 });
 		return { ok: true, stdout, stderr };
 	} catch (error) {
 		const err = error as { stdout?: string; stderr?: string; code?: number };

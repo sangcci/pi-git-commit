@@ -12,6 +12,7 @@ English Version: [README.en.md](README.en.md)
 - 추가 instruction 포함 메세지 재생성
 - [commitlint](https://github.com/conventional-changelog/commitlint), [sem](https://github.com/Ataraxy-Labs/sem) 활용
 - message 언어 설정
+- 한글, 공백 등 특수 문자가 포함된 파일명 처리
 - staged 변경과 unstaged 변경 커밋 우선순위 선택
 - AI model 사용 불가 시 huristic 버전 메세지 생성
 - 실패 시 에러 출력 및 loop 종료
