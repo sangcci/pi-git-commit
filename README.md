@@ -16,6 +16,7 @@ English Version: [README.en.md](README.en.md)
 - staged 변경과 unstaged 변경 커밋 우선순위 선택
 - AI model 사용 불가 시 huristic 버전 메세지 생성
 - 실패 시 에러 출력 및 loop 종료
+- Git 상태 수집, 제안 생성, 커밋 실행 단계 진행 UI 표시
 
 ## 동작 흐름
 
@@ -96,6 +97,12 @@ pi -e ~/Tools/pi-git-commit/index.ts
 명령을 실행하면 현재 repository의 Git 상태와 diff를 읽고, staged 변경과 unstaged 변경 상태에 맞춰 커밋 제안을 만듭니다.
 
 ## 기능 설명
+
+### 진행 UI
+
+명령 실행 중에는 editor 위에 `pi-git-commit` 진행 UI가 표시됩니다. Git 상태 수집, 커밋 범위 선택, AI 제안 생성, 사용자 확인, 실제 commit 실행 단계를 볼 수 있습니다.
+
+커밋 실행 중에는 현재 실행 중인 커밋 번호, 메시지, stage 대상 파일 수, 완료된 커밋 요약이 표시됩니다. 실패하면 실패 단계와 reason을 표시한 뒤 에러를 출력하고 종료합니다.
 
 ### 제안 화면
 
