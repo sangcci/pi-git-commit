@@ -15,6 +15,7 @@ Korean Version: [README.md](README.md)
 - Choose priority between staged and unstaged changes.
 - Heuristic message generation when the AI model is unavailable.
 - On failure, print the error and stop the loop.
+- Show progress UI for Git state collection, proposal generation, and commit execution.
 
 ## Flow
 
@@ -95,6 +96,12 @@ Move to the Git repository where you want to create commits, run pi, then enter 
 The command reads the current repository's Git status and diff, then builds a commit proposal based on the staged and unstaged changes.
 
 ## Feature details
+
+### Progress UI
+
+While the command is running, a `pi-git-commit` progress UI appears above the editor. It shows Git state collection, commit scope selection, AI proposal generation, user approval, and actual commit execution steps.
+
+During commit execution, it shows the current commit number, message, staged file count, and completed commit summaries. If a step fails, it marks the failed step, shows the reason, prints the error, and stops.
 
 ### Proposal screen
 
