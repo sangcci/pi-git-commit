@@ -101,7 +101,7 @@ type ProgressStep = { label: string; state: ProgressStepState; detail?: string }
 type ProgressView = { title: string; steps: ProgressStep[] };
 
 export default function piGitCommit(pi: ExtensionAPI) {
-	pi.registerCommand("git-commit", {
+	pi.registerCommand("commit", {
 		description: "Plan and run git commits with user approval",
 		handler: async (_args, ctx) => runCommitWizard(ctx),
 	});
@@ -126,7 +126,7 @@ function progressIcon(state: ProgressStepState) {
 }
 
 async function runCommitWizard(ctx: ExtensionCommandContext) {
-	if (!ctx.hasUI) return ctx.ui.notify("/git-commit requires an interactive UI.", "error");
+	if (!ctx.hasUI) return ctx.ui.notify("/commit requires an interactive UI.", "error");
 
 	try {
 		const cwd = ctx.cwd;
@@ -471,7 +471,7 @@ function classifyCommitFailure(stderr: string): "lint" | "hook" | "git" | "unkno
 function formatCommitFailureNotification(result: Exclude<CommitResult, { ok: true }>) {
 	const output = `${result.stderr}\n${result.stdout}`.trim();
 	const details = output ? `\n\n${output.slice(0, 2000)}` : "";
-	return `Commit failed (${result.reason}).${details}\n\nResolve the Git state manually, then run /git-commit again.`;
+	return `Commit failed (${result.reason}).${details}\n\nResolve the Git state manually, then run /commit again.`;
 }
 
 function cleanOptionalText(value: unknown) {

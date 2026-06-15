@@ -21,7 +21,7 @@ English Version: [README.en.md](README.en.md)
 ## 동작 흐름
 
 ```text
-/git-commit
+/commit
    |
    v
 Git 상태 수집
@@ -51,7 +51,7 @@ git add + git commit 실행
 
 ```text
 index.ts
-  register /git-commit
+  register /commit
   runCommitWizard()
     loadConfig()
     collectGitState()
@@ -64,7 +64,7 @@ index.ts
     classifyCommitFailure()
 ```
 
-context는 `/git-commit` 명령 안에서만 유지됩니다. 명령이 끝나면 따로 context를 저장하지 않습니다.
+context는 `/commit` 명령 안에서만 유지됩니다. 명령이 끝나면 따로 context를 저장하지 않습니다.
 
 ## 사용법
 
@@ -84,14 +84,14 @@ git clone <repository-url> ~/Tools/pi-git-commit
 pi -e ~/Tools/pi-git-commit/index.ts
 ```
 
-`pi -e`로 extension 파일을 로드하면 pi 세션 안에서 `/git-commit` 명령을 사용할 수 있습니다. 다른 경로에 clone했다면 `index.ts` 경로만 맞춰주면 됩니다.
+`pi -e`로 extension 파일을 로드하면 pi 세션 안에서 `/commit` 명령을 사용할 수 있습니다. 다른 경로에 clone했다면 `index.ts` 경로만 맞춰주면 됩니다.
 
 3. run
 
 커밋을 만들 Git repository로 이동한 뒤 pi를 실행하고 명령을 입력합니다.
 
 ```text
-/git-commit
+/commit
 ```
 
 명령을 실행하면 현재 repository의 Git 상태와 diff를 읽고, staged 변경과 unstaged 변경 상태에 맞춰 커밋 제안을 만듭니다.
@@ -216,6 +216,6 @@ feat(test): 수학 헬퍼 import 갱신
 
 커밋은 여러 이유로 실패할 수 있습니다. 이에, `pi-git-commit`은 에러를 직접 handling하지 않고 종료해서 사용자가 직접 고칠 수 있게 합니다.
 
-자동으로 재시도하거나, ignored file을 강제로 추가하거나, `.gitignore`를 수정하거나, hook을 바꾸지 않습니다. 이런 결정은 프로젝트마다 다르기 때문에 사용자가 직접 처리하는 편이 안전합니다. Git 상태를 정리한 뒤 `/git-commit`을 다시 실행하면 됩니다.
+자동으로 재시도하거나, ignored file을 강제로 추가하거나, `.gitignore`를 수정하거나, hook을 바꾸지 않습니다. 이런 결정은 프로젝트마다 다르기 때문에 사용자가 직접 처리하는 편이 안전합니다. Git 상태를 정리한 뒤 `/commit`을 다시 실행하면 됩니다.
 
 ## bug report

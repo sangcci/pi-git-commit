@@ -20,7 +20,7 @@ Korean Version: [README.md](README.md)
 ## Flow
 
 ```text
-/git-commit
+/commit
    |
    v
 Collect Git state
@@ -50,7 +50,7 @@ Failure: show error and stop
 
 ```text
 index.ts
-  register /git-commit
+  register /commit
   runCommitWizard()
     loadConfig()
     collectGitState()
@@ -63,7 +63,7 @@ index.ts
     classifyCommitFailure()
 ```
 
-Context is kept only inside a single `/git-commit` command run. Nothing is persisted after the command finishes.
+Context is kept only inside a single `/commit` command run. Nothing is persisted after the command finishes.
 
 ## Usage
 
@@ -83,14 +83,14 @@ You can clone it anywhere. The examples below assume it was cloned to `~/Tools/p
 pi -e ~/Tools/pi-git-commit/index.ts
 ```
 
-Loading the extension file with `pi -e` makes the `/git-commit` command available inside the pi session. If you cloned the repository somewhere else, adjust the path to `index.ts`.
+Loading the extension file with `pi -e` makes the `/commit` command available inside the pi session. If you cloned the repository somewhere else, adjust the path to `index.ts`.
 
 3. run
 
 Move to the Git repository where you want to create commits, run pi, then enter the command:
 
 ```text
-/git-commit
+/commit
 ```
 
 The command reads the current repository's Git status and diff, then builds a commit proposal based on the staged and unstaged changes.
@@ -215,6 +215,6 @@ The `lint` config is a hint used when AI generates proposals. The final source o
 
 Commits can fail for many reasons. `pi-git-commit` does not try to handle those errors automatically. It stops and lets you fix the repository state yourself.
 
-It does not automatically retry, force-add ignored files, edit `.gitignore`, or modify hooks. Those decisions are project-specific, so it is safer for the user to handle them directly. After cleaning up the Git state, run `/git-commit` again.
+It does not automatically retry, force-add ignored files, edit `.gitignore`, or modify hooks. Those decisions are project-specific, so it is safer for the user to handle them directly. After cleaning up the Git state, run `/commit` again.
 
 ## bug report
