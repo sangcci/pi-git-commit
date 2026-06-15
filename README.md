@@ -1,7 +1,6 @@
 # pi-git-commit
 
-Git commit extension입니다.
-현재 변경사항을 살펴보고, AI를 이용해 커밋 단위 및 메세지를 제안하는 Git commit extension입니다.
+현재 변경사항을 살펴보고, AI를 이용해 커밋 단위 및 메세지를 제안하는 PI Agent용 extension입니다.
 
 English Version: [README.en.md](README.en.md)
 
@@ -11,7 +10,7 @@ English Version: [README.en.md](README.en.md)
 - 커밋을 만들기 전 확인 절차
 - 커밋 제목, 본문, footer 직접 edit 가능
 - 추가 instruction 포함 메세지 재생성
-- commitlint, `sem` 활용
+- [commitlint](https://github.com/conventional-changelog/commitlint), [sem](https://github.com/Ataraxy-Labs/sem) 활용
 - message 언어 설정
 - staged 변경과 unstaged 변경 커밋 우선순위 선택
 - AI model 사용 불가 시 huristic 버전 메세지 생성
