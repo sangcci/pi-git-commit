@@ -136,10 +136,13 @@ async function runCommitWizard(ctx: ExtensionCommandContext) {
 	if (!ctx.hasUI) return ctx.ui.notify("/commit requires an interactive UI.", "error");
 
 	try {
-		const cwd = ctx.cwd;
+		const initialCwd = ctx.cwd;
 		setProgressWidget(ctx, { title: "Starting", steps: [{ label: "Check Git repository", state: "active" }] });
-		const repoCheck = await git(cwd, ["rev-parse", "--is-inside-work-tree"]);
+		const repoCheck = await git(initialCwd, ["rev-parse", "--is-inside-work-tree"]);
 		if (!repoCheck.ok || repoCheck.stdout.trim() !== "true") return ctx.ui.notify("Not inside a Git repository.", "error");
+		const repoRoot = await git(initialCwd, ["rev-parse", "--show-toplevel"]);
+		if (!repoRoot.ok || !repoRoot.stdout.trim()) return ctx.ui.notify("Could not resolve Git repository root.", "error");
+		const cwd = repoRoot.stdout.trim();
 
 		const config = await loadConfig(cwd, ctx);
 		const notes: string[] = [];
