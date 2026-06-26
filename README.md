@@ -88,13 +88,13 @@ pi -e ~/Tools/pi-git-commit/index.ts
 
 3. run
 
-커밋을 만들 Git repository로 이동한 뒤 pi를 실행하고 명령을 입력합니다.
+커밋을 만들 Git repository 또는 그 하위 폴더로 이동한 뒤 pi를 실행하고 명령을 입력합니다.
 
 ```text
 /commit
 ```
 
-명령을 실행하면 현재 repository의 Git 상태와 diff를 읽고, staged 변경과 unstaged 변경 상태에 맞춰 커밋 제안을 만듭니다.
+명령을 실행하면 Git repository root를 자동으로 찾아 그 기준으로 Git 상태와 diff를 읽고, staged 변경과 unstaged 변경 상태에 맞춰 커밋 제안을 만듭니다.
 
 ## 기능 설명
 

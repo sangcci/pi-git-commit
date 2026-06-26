@@ -88,13 +88,13 @@ Loading the extension file with `pi -e` makes the `/commit` command available in
 
 3. run
 
-Move to the Git repository where you want to create commits, run pi, then enter the command:
+Move to the Git repository where you want to create commits, or any subdirectory inside it, run pi, then enter the command:
 
 ```text
 /commit
 ```
 
-The command reads the current repository's Git status and diff, then builds a commit proposal based on the staged and unstaged changes.
+The command automatically resolves the Git repository root, reads Git status and diff from that root, then builds a commit proposal based on the staged and unstaged changes.
 
 ## Feature details
 
