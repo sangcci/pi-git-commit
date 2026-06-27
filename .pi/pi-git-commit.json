@@ -3,7 +3,7 @@
     "language": "ko"
   },
   "model": {
-    "provider": "openai",
+    "provider": "openai-codex",
     "id": "gpt-5.4-mini"
   },
   "lint": {
