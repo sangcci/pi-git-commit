@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 This project follows [Semantic Versioning](https://semver.org/). Release versions are managed with Git tags using the `vMAJOR.MINOR.PATCH` format.
 
+## [v0.2.0] - 2026-06-27
+
+### Added
+
+- Added `model` config support to select a pi model specifically for `/commit` proposal generation.
+- Added support for provider-qualified model references such as `openai-codex/gpt-5.4-mini`.
+- Added retry flow for commitlint and commit-msg hook failures before any commit is created.
+- Added failure-context regeneration so rejected commit messages can be regenerated with hook output.
+
+### Changed
+
+- `/commit` now documents and preserves the default behavior of using the current pi session model when no model override is configured.
+- Proposal progress UI now shows the resolved model and model-resolution failure reason when fallback is used.
+
 ## [v0.1.1] - 2026-06-27
 
 ### Changed
@@ -26,5 +40,6 @@ This project follows [Semantic Versioning](https://semver.org/). Release version
 - Config support through project and global `pi-git-commit.json` files.
 - Commitlint-style hint support for generated messages.
 
+[v0.2.0]: https://github.com/sangcci/pi-git-commit/releases/tag/v0.2.0
 [v0.1.1]: https://github.com/sangcci/pi-git-commit/releases/tag/v0.1.1
 [v0.1.0]: https://github.com/sangcci/pi-git-commit/releases/tag/v0.1.0
