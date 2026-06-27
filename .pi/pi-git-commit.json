@@ -1,0 +1,16 @@
+{
+  "message": {
+    "language": "ko"
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.4-mini"
+  },
+  "lint": {
+    "conventional": true,
+    "requireScope": true,
+    "scopes": ["docs", "config", "repo"],
+    "allowBody": true,
+    "allowFooter": true
+  }
+}

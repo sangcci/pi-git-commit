@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { complete, type UserMessage } from "@earendil-works/pi-ai";
+import { complete, type Api, type Model, type UserMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 const execFileAsync = promisify(execFile);
@@ -54,10 +54,16 @@ type CommitLintConfig = {
 	allowFooter?: boolean;
 };
 
+type GitCommitModelConfig = {
+	provider?: string;
+	id: string;
+};
+
 type GitCommitConfig = {
 	message?: {
 		language?: string;
 	};
+	model?: GitCommitModelConfig | string;
 	lint?: CommitLintConfig;
 	commands?: { sem?: string };
 };
@@ -97,12 +103,16 @@ type CommitProposal = {
 	fallbackReason?: string;
 };
 
+type CommitFailureReason = "lint" | "hook" | "git" | "unknown";
 type CommitResult =
 	| { ok: true; stdout: string; stderr: string; summaries: string[] }
-	| { ok: false; stdout: string; stderr: string; reason: "lint" | "hook" | "git" | "unknown" };
+	| { ok: false; stdout: string; stderr: string; reason: CommitFailureReason; summaries: string[] };
 
 type ShellResult = { ok: boolean; stdout: string; stderr: string; exitCode?: number };
+type ProposalModel = Model<Api>;
+type ModelResolution = { model?: ProposalModel; label: string; reason?: string };
 type UserAction = "proceed" | "edit" | "regenerate" | "cancel";
+type CommitFailureAction = "edit" | "regenerate" | "cancel";
 type ProgressStepState = "pending" | "active" | "done" | "failed";
 type ProgressStep = { label: string; state: ProgressStepState; detail?: string };
 type ProgressView = { title: string; steps: ProgressStep[] };
@@ -185,6 +195,21 @@ async function runCommitWizard(ctx: ExtensionCommandContext) {
 			}
 
 			setProgressWidget(ctx, { title: "Failed", steps: [{ label: `Commit failed (${result.reason})`, state: "failed" }] });
+			if (canRetryCommitFailure(result)) {
+				const failureAction = await askCommitFailureAction(ctx, result);
+				if (failureAction === "edit") {
+					proposal = await editCommitMessages(ctx, proposal);
+					continue;
+				}
+				if (failureAction === "regenerate") {
+					const note = await ctx.ui.editor("Regenerate with failure context", buildFailureRegenerationNote(result));
+					if (note?.trim()) notes.push(note.trim());
+					proposal = undefined;
+					continue;
+				}
+				ctx.ui.notify("Commit cancelled after failure.", "info");
+				return;
+			}
 			ctx.ui.notify(formatCommitFailureNotification(result), "error");
 			return;
 		}
@@ -246,15 +271,17 @@ async function collectGitState(cwd: string, config: GitCommitConfig): Promise<Gi
 
 async function buildProposal(ctx: ExtensionCommandContext, state: GitState, config: GitCommitConfig, notes: string[], mode: CommitMode): Promise<CommitProposal> {
 	const fileCount = parseStatusFiles(state.status, mode).length;
+	const modelResolution = resolveProposalModel(ctx, config);
+	const modelDetail = [`model: ${modelResolution.label}`, `mode: ${mode}`, `files: ${fileCount}`, modelResolution.reason].filter(Boolean).join(", ");
 	setProgressWidget(ctx, {
 		title: "Generating proposal",
 		steps: [
 			{ label: "Git state collected", state: "done" },
-			{ label: "Build AI commit proposal", state: "active", detail: `model: ${ctx.model?.id ?? "fallback"}, mode: ${mode}, files: ${fileCount}` },
+			{ label: "Build AI commit proposal", state: "active", detail: modelDetail },
 		],
 	});
-	ctx.ui.setStatus("pi-git-commit", `Generating commit proposal with ${ctx.model?.id ?? "fallback"}...`);
-	const result = await buildProposalWithModel(ctx, state, config, notes, mode);
+	ctx.ui.setStatus("pi-git-commit", `Generating commit proposal with ${modelResolution.label}...`);
+	const result = await buildProposalWithModel(ctx, state, config, notes, mode, modelResolution);
 	ctx.ui.setStatus("pi-git-commit", "");
 	if (result.proposal) return result.proposal;
 	setProgressWidget(ctx, {
@@ -268,16 +295,45 @@ async function buildProposal(ctx: ExtensionCommandContext, state: GitState, conf
 	return { ...buildHeuristicProposal(state, config, notes, mode), fallbackReason: result.reason };
 }
 
-async function buildProposalWithModel(ctx: ExtensionCommandContext, state: GitState, config: GitCommitConfig, notes: string[], mode: CommitMode): Promise<{ proposal?: CommitProposal; reason: string }> {
-	if (!ctx.model) return { reason: "No model selected." };
-	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model);
-	if (!auth.ok || !auth.apiKey) return { reason: auth.ok ? `No API key for ${ctx.model.provider}.` : auth.error };
+function resolveProposalModel(ctx: ExtensionCommandContext, config: GitCommitConfig): ModelResolution {
+	const configured = parseModelConfig(config.model);
+	if (!configured) return { model: ctx.model, label: formatModelLabel(ctx.model), reason: ctx.model ? undefined : "No model selected." };
+	if (!configured.id) return { label: "fallback", reason: "Configured model is missing id." };
+
+	if (configured.provider) {
+		const model = ctx.modelRegistry.find(configured.provider, configured.id);
+		return model
+			? { model, label: formatModelLabel(model) }
+			: { label: `${configured.provider}/${configured.id}`, reason: `Configured model not found: provider=${configured.provider}, id=${configured.id}.` };
+	}
+
+	const matches = ctx.modelRegistry.getAll().filter((model) => model.id === configured.id || `${model.provider}/${model.id}` === configured.id);
+	if (matches.length === 1) return { model: matches[0], label: formatModelLabel(matches[0]) };
+	if (matches.length > 1) return { label: configured.id, reason: `Configured model id is ambiguous across providers: ${configured.id}. Add provider to config.model.` };
+	return { label: configured.id, reason: `Configured model not found: ${configured.id}.` };
+}
+
+function parseModelConfig(value: GitCommitConfig["model"]): GitCommitModelConfig | undefined {
+	if (typeof value === "string") return { id: value.trim() };
+	if (value && typeof value === "object") return { provider: typeof value.provider === "string" ? value.provider.trim() : undefined, id: typeof value.id === "string" ? value.id.trim() : "" };
+	return undefined;
+}
+
+function formatModelLabel(model: ProposalModel | undefined) {
+	return model ? `${model.provider}/${model.id}` : "fallback";
+}
+
+async function buildProposalWithModel(ctx: ExtensionCommandContext, state: GitState, config: GitCommitConfig, notes: string[], mode: CommitMode, modelResolution: ModelResolution): Promise<{ proposal?: CommitProposal; reason: string }> {
+	if (!modelResolution.model) return { reason: modelResolution.reason ?? "No model selected." };
+	const model = modelResolution.model;
+	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+	if (!auth.ok || !auth.apiKey) return { reason: auth.ok ? `No API key for ${model.provider}.` : auth.error };
 	const allowedFiles = parseStatusFiles(state.status, mode);
 	if (allowedFiles.length === 0) return { reason: "No eligible files for selected mode." };
 
 	const userMessage: UserMessage = { role: "user", content: [{ type: "text", text: buildModelInput(state, config, notes, allowedFiles, mode) }], timestamp: Date.now() };
 	try {
-		const response = await complete(ctx.model, { systemPrompt: SYSTEM_PROMPT, messages: [userMessage] }, { apiKey: auth.apiKey, headers: auth.headers });
+		const response = await complete(model, { systemPrompt: SYSTEM_PROMPT, messages: [userMessage] }, { apiKey: auth.apiKey, headers: auth.headers });
 		const text = response.content.filter((c): c is { type: "text"; text: string } => c.type === "text").map((c) => c.text).join("\n");
 		const proposal = parseAiProposal(text, allowedFiles, mode, notes, config);
 		return proposal ? { proposal, reason: "" } : { reason: "Model returned invalid proposal JSON." };
@@ -436,6 +492,24 @@ async function askUser(ctx: ExtensionCommandContext, proposal: CommitProposal): 
 	return "cancel";
 }
 
+function canRetryCommitFailure(result: Exclude<CommitResult, { ok: true }>) {
+	return (result.reason === "lint" || result.reason === "hook") && result.summaries.length === 0;
+}
+
+async function askCommitFailureAction(ctx: ExtensionCommandContext, result: Exclude<CommitResult, { ok: true }>): Promise<CommitFailureAction> {
+	const output = `${result.stderr}\n${result.stdout}`.trim();
+	const details = output ? `\n\n${output.slice(0, 2000)}` : "";
+	const choice = await ctx.ui.select(`Commit failed (${result.reason}).${details}\n\nYou can fix the proposal and retry without leaving /commit.`, ["Edit commit messages and retry", "Regenerate with failure context", "Cancel"]);
+	if (choice === "Edit commit messages and retry") return "edit";
+	if (choice === "Regenerate with failure context") return "regenerate";
+	return "cancel";
+}
+
+function buildFailureRegenerationNote(result: Exclude<CommitResult, { ok: true }>) {
+	const output = `${result.stderr}\n${result.stdout}`.trim();
+	return [`The previous git commit failed with reason: ${result.reason}.`, "Adjust the commit proposal so it passes the repository commit checks.", output ? `Failure output:\n${output.slice(0, 2000)}` : undefined].filter(Boolean).join("\n\n");
+}
+
 async function editCommitMessages(ctx: ExtensionCommandContext, proposal: CommitProposal): Promise<CommitProposal> {
 	const initial = proposal.commits.map((commit, index) => [`Commit ${index + 1}`, `message: ${commit.message}`, "body: |", indentBlock(commit.body), "footer: |", indentBlock(commit.footer)].join("\n")).join("\n\n");
 	const edited = await ctx.ui.editor("Edit commit messages", initial);
@@ -486,7 +560,7 @@ async function executeCommits(cwd: string, proposal: CommitProposal, onProgress?
 			const addResult = await git(cwd, ["add", "--", ...commit.files]);
 			stdout += addResult.stdout;
 			stderr += addResult.stderr;
-			if (!addResult.ok) return { ok: false, stdout, stderr, reason: "git" };
+			if (!addResult.ok) return { ok: false, stdout, stderr, reason: "git", summaries };
 		}
 		const args = ["commit", "-m", commit.message];
 		if (commit.body) args.push("-m", commit.body);
@@ -495,14 +569,14 @@ async function executeCommits(cwd: string, proposal: CommitProposal, onProgress?
 		const commitResult = await git(cwd, args);
 		stdout += commitResult.stdout;
 		stderr += commitResult.stderr;
-		if (!commitResult.ok) return { ok: false, stdout, stderr, reason: classifyCommitFailure(stderr) };
+		if (!commitResult.ok) return { ok: false, stdout, stderr, reason: classifyCommitFailure(stderr), summaries };
 		const summary = await git(cwd, ["log", "-1", "--pretty=format:%h %s"]);
 		if (summary.ok) summaries.push(summary.stdout.trim());
 	}
 	return { ok: true, stdout, stderr, summaries };
 }
 
-function classifyCommitFailure(stderr: string): "lint" | "hook" | "git" | "unknown" {
+function classifyCommitFailure(stderr: string): CommitFailureReason {
 	const text = stderr.toLowerCase();
 	if (text.includes("commitlint") || text.includes("scope") || text.includes("subject") || text.includes("type-enum") || text.includes("header")) return "lint";
 	if (text.includes("hook") || text.includes("husky") || text.includes("lefthook") || text.includes("pre-commit") || text.includes("commit-msg")) return "hook";
@@ -513,6 +587,7 @@ function classifyCommitFailure(stderr: string): "lint" | "hook" | "git" | "unkno
 function formatCommitFailureNotification(result: Exclude<CommitResult, { ok: true }>) {
 	const output = `${result.stderr}\n${result.stdout}`.trim();
 	const details = output ? `\n\n${output.slice(0, 2000)}` : "";
+	if (result.summaries.length > 0) return `Commit failed (${result.reason}) after creating ${result.summaries.length} commit(s).${details}\n\nResolve the Git state manually, then run /commit again.`;
 	return `Commit failed (${result.reason}).${details}\n\nResolve the Git state manually, then run /commit again.`;
 }
 
