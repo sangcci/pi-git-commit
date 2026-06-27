@@ -12,9 +12,11 @@ Korean Version: [README.md](README.md)
 - Direct editing for commit subject, body, and footer.
 - Regenerate messages with an additional instruction.
 - Uses commitlint-style hints and `sem` when configured.
+- Select the pi model used for `/commit` proposals through JSON config.
 - Handles filenames with Unicode, spaces, and other special characters.
 - Choose priority between staged and unstaged changes.
 - Heuristic message generation when the AI model is unavailable.
+- When commitlint or hooks reject a message, edit or regenerate and retry.
 - On failure, print the error and stop the loop.
 - Show progress UI for Git state collection, proposal generation, and commit execution.
 
@@ -194,6 +196,10 @@ Example:
   "message": {
     "language": "ko"
   },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.5"
+  },
   "lint": {
     "conventional": true,
     "types": ["feat", "fix", "docs", "test", "refactor", "chore"],
@@ -209,6 +215,33 @@ Example:
   }
 }
 ```
+
+### Model selection
+
+By default, `/commit` uses the model currently selected in the pi session. If you switch models with `/model`, `/commit` follows that selection.
+
+Set `model` to use a separate model only for `/commit` proposal generation. The model must exist in pi's model registry, either as a built-in model or as a custom model from `~/.pi/agent/models.json`.
+
+Recommended format:
+
+```json
+{
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.5"
+  }
+}
+```
+
+A string shorthand is also supported.
+
+```json
+{
+  "model": "openai/gpt-5.5"
+}
+```
+
+You can also specify only a model id, but if multiple providers expose the same id it is considered ambiguous and the extension falls back to the heuristic proposal. If the configured model cannot be found or has no API key, the extension uses the existing heuristic fallback.
 
 ### Message language
 
@@ -228,8 +261,14 @@ The `lint` config is a hint used when AI generates proposals. The final source o
 
 ## Failure policy
 
-Commits can fail for many reasons. `pi-git-commit` does not try to handle those errors automatically. It stops and lets you fix the repository state yourself.
+Commits can fail for many reasons.
 
-It does not automatically retry, force-add ignored files, edit `.gitignore`, or modify hooks. Those decisions are project-specific, so it is safer for the user to handle them directly. After cleaning up the Git state, run `/commit` again.
+When a failure looks like a commit message problem, such as commitlint or a commit-msg hook, and no commit has been created yet, the extension does not stop immediately. It shows these options instead:
+
+- `Edit commit messages and retry` — edit the current proposal messages, then try `git commit` again.
+- `Regenerate with failure context` — regenerate the proposal with the failure log added as an instruction.
+- `Cancel` — stop.
+
+If some commits were already created, or if the failure requires repository-state decisions such as a `git add` failure, the extension does not retry automatically. It does not force-add ignored files, edit `.gitignore`, or modify hooks. Those decisions are project-specific, so it is safer for the user to handle them directly. After cleaning up the Git state, run `/commit` again.
 
 ## bug report

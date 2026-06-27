@@ -12,9 +12,11 @@ English Version: [README.en.md](README.en.md)
 - 추가 instruction 포함 메세지 재생성
 - [commitlint](https://github.com/conventional-changelog/commitlint), [sem](https://github.com/Ataraxy-Labs/sem) 활용
 - message 언어 설정
+- JSON 설정으로 `/commit` 제안에 사용할 pi model 지정
 - 한글, 공백 등 특수 문자가 포함된 파일명 처리
 - staged 변경과 unstaged 변경 커밋 우선순위 선택
 - AI model 사용 불가 시 huristic 버전 메세지 생성
+- commitlint/hook 실패 시 메시지 수정 또는 재생성 후 재시도 가능
 - 실패 시 에러 출력 및 loop 종료
 - Git 상태 수집, 제안 생성, 커밋 실행 단계 진행 UI 표시
 
@@ -194,6 +196,10 @@ git checkout v0.1.0
   "message": {
     "language": "ko"
   },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.5"
+  },
   "lint": {
     "conventional": true,
     "types": ["feat", "fix", "docs", "test", "refactor", "chore"],
@@ -209,6 +215,33 @@ git checkout v0.1.0
   }
 }
 ```
+
+### 모델 선택
+
+기본값은 현재 pi session에서 선택된 model입니다. 즉 `/model`로 바꾼 model이 있으면 `/commit`도 그 model을 사용합니다.
+
+`model` 설정을 넣으면 `/commit` 제안 생성에만 별도 model을 사용할 수 있습니다. 이 model은 pi의 model registry에 등록되어 있어야 하며, built-in model 또는 `~/.pi/agent/models.json`에 추가한 custom model을 사용할 수 있습니다.
+
+권장 형식:
+
+```json
+{
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.5"
+  }
+}
+```
+
+간단히 문자열로도 쓸 수 있습니다.
+
+```json
+{
+  "model": "openai/gpt-5.5"
+}
+```
+
+provider 없이 model id만 쓰는 것도 가능하지만, 여러 provider에 같은 id가 있으면 모호하므로 fallback으로 전환됩니다. model을 찾지 못하거나 API key가 없으면 기존처럼 heuristic proposal을 사용합니다.
 
 ### 메시지 언어
 
@@ -228,8 +261,14 @@ feat(test): 수학 헬퍼 import 갱신
 
 ## 실패 처리 정책
 
-커밋은 여러 이유로 실패할 수 있습니다. 이에, `pi-git-commit`은 에러를 직접 handling하지 않고 종료해서 사용자가 직접 고칠 수 있게 합니다.
+커밋은 여러 이유로 실패할 수 있습니다.
 
-자동으로 재시도하거나, ignored file을 강제로 추가하거나, `.gitignore`를 수정하거나, hook을 바꾸지 않습니다. 이런 결정은 프로젝트마다 다르기 때문에 사용자가 직접 처리하는 편이 안전합니다. Git 상태를 정리한 뒤 `/commit`을 다시 실행하면 됩니다.
+commitlint 또는 commit-msg hook처럼 커밋 메시지 문제로 보이는 실패가 첫 커밋 생성 전에 발생하면, 바로 종료하지 않고 다음 선택지를 보여줍니다.
+
+- `Edit commit messages and retry` — 현재 제안의 메시지를 직접 고친 뒤 다시 commit을 시도합니다.
+- `Regenerate with failure context` — 실패 로그를 instruction으로 넣어 제안을 다시 생성합니다.
+- `Cancel` — 종료합니다.
+
+이미 일부 커밋이 만들어졌거나, git add 실패처럼 repository 상태 판단이 필요한 실패는 자동 재시도하지 않습니다. ignored file을 강제로 추가하거나, `.gitignore`를 수정하거나, hook을 바꾸지 않습니다. 이런 결정은 프로젝트마다 다르기 때문에 사용자가 직접 처리하는 편이 안전합니다. Git 상태를 정리한 뒤 `/commit`을 다시 실행하면 됩니다.
 
 ## bug report
