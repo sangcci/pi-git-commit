@@ -1,7 +1,7 @@
 import { exec, execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { complete, type Api, type Model, type UserMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -62,6 +62,8 @@ type GitCommitModelConfig = {
 type GitCommitConfig = {
 	message?: {
 		language?: string;
+		promptFile?: string;
+		instruction?: string;
 	};
 	model?: GitCommitModelConfig | string;
 	lint?: CommitLintConfig;
@@ -331,7 +333,8 @@ async function buildProposalWithModel(ctx: ExtensionCommandContext, state: GitSt
 	const allowedFiles = parseStatusFiles(state.status, mode);
 	if (allowedFiles.length === 0) return { reason: "No eligible files for selected mode." };
 
-	const userMessage: UserMessage = { role: "user", content: [{ type: "text", text: buildModelInput(state, config, notes, allowedFiles, mode) }], timestamp: Date.now() };
+	const messageStylePrompt = await loadMessageStylePrompt(state.cwd, config, ctx);
+	const userMessage: UserMessage = { role: "user", content: [{ type: "text", text: buildModelInput(state, config, notes, allowedFiles, mode, messageStylePrompt) }], timestamp: Date.now() };
 	try {
 		const response = await complete(model, { systemPrompt: SYSTEM_PROMPT, messages: [userMessage] }, { apiKey: auth.apiKey, headers: auth.headers });
 		const text = response.content.filter((c): c is { type: "text"; text: string } => c.type === "text").map((c) => c.text).join("\n");
@@ -342,9 +345,45 @@ async function buildProposalWithModel(ctx: ExtensionCommandContext, state: GitSt
 	}
 }
 
-function buildModelInput(state: GitState, config: GitCommitConfig, notes: string[], allowedFiles: string[], mode: CommitMode) {
+async function loadMessageStylePrompt(cwd: string, config: GitCommitConfig, ctx: ExtensionCommandContext) {
+	const promptPath = config.message?.promptFile?.trim();
+	if (!promptPath) return undefined;
+	try {
+		return await readFile(resolvePromptFilePath(cwd, promptPath), "utf8");
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "unknown error";
+		ctx.ui.notify(`Failed to read message.promptFile (${promptPath}); continuing without it. ${message}`, "warning");
+		return undefined;
+	}
+}
+
+function resolvePromptFilePath(cwd: string, promptPath: string) {
+	if (promptPath === "~") return homedir();
+	if (promptPath.startsWith("~/")) return join(homedir(), promptPath.slice(2));
+	return isAbsolute(promptPath) ? promptPath : resolve(cwd, promptPath);
+}
+
+function buildModelInput(state: GitState, config: GitCommitConfig, notes: string[], allowedFiles: string[], mode: CommitMode, messageStylePrompt?: string) {
 	const messageLanguage = config.message?.language ?? "en";
-	return JSON.stringify({ branch: state.branch, mode, messageLanguage, languageInstruction: `Write commit subject, body, and footer in ${messageLanguage}. Keep conventional commit type/scope tokens in English.`, allowedFiles, status: formatStatusForDisplay(state.status), diff: truncate(mode === "staged-only" ? state.stagedDiff : `${state.stagedDiff}\n${state.diff}`, MAX_DIFF_CHARS), recentLog: state.recentLog, sem: state.sem, config, notes }, null, 2);
+	const messageInstruction = buildMessageInstruction(messageLanguage, config, messageStylePrompt);
+	return JSON.stringify({ branch: state.branch, mode, messageLanguage, messageInstruction, allowedFiles, status: formatStatusForDisplay(state.status), diff: truncate(mode === "staged-only" ? state.stagedDiff : `${state.stagedDiff}\n${state.diff}`, MAX_DIFF_CHARS), recentLog: state.recentLog, sem: state.sem, config, notes }, null, 2);
+}
+
+function buildMessageInstruction(messageLanguage: string, config: GitCommitConfig, messageStylePrompt?: string) {
+	const instructions = [
+		`Write commit subject, body, and footer in ${messageLanguage}. Keep conventional commit type/scope tokens in English.`,
+		"Infer the actual change intent from status, diff, and file paths. Do not merely translate previous English wording or internal identifiers word by word.",
+	];
+	if (/^ko|korean|한국어|한글/i.test(messageLanguage)) {
+		instructions.push(
+			"For Korean messages, write natural Korean that a developer would use in a commit history.",
+			"Avoid awkward noun chains and literal translations. Keep technical identifiers such as /commit, config, model, provider, OpenAI, and file names as-is when that is clearer.",
+			"Prefer concrete wording that explains what behavior, setting, or documentation changed.",
+		);
+	}
+	if (messageStylePrompt?.trim()) instructions.push(`Project message style prompt:\n${messageStylePrompt.trim()}`);
+	if (config.message?.instruction?.trim()) instructions.push(`Additional message instruction:\n${config.message.instruction.trim()}`);
+	return instructions.join("\n\n");
 }
 
 function parseAiProposal(text: string, allowedFiles: string[], mode: CommitMode, notes: string[], config: GitCommitConfig): CommitProposal | undefined {

@@ -11,7 +11,7 @@ English Version: [README.en.md](README.en.md)
 - 커밋 제목, 본문, footer 직접 edit 가능
 - 추가 instruction 포함 메세지 재생성
 - [commitlint](https://github.com/conventional-changelog/commitlint), [sem](https://github.com/Ataraxy-Labs/sem) 활용
-- message 언어 설정
+- message 언어 및 스타일 prompt 설정
 - JSON 설정으로 `/commit` 제안에 사용할 pi model 지정
 - 한글, 공백 등 특수 문자가 포함된 파일명 처리
 - staged 변경과 unstaged 변경 커밋 우선순위 선택
@@ -194,7 +194,9 @@ git checkout v0.1.0
 ```json
 {
   "message": {
-    "language": "ko"
+    "language": "ko",
+    "promptFile": ".pi/prompts/commit-message-style.md",
+    "instruction": "커밋 제목은 diff의 의도를 자연스러운 한국어로 요약합니다."
   },
   "model": {
     "provider": "openai",
@@ -243,7 +245,7 @@ git checkout v0.1.0
 
 provider 없이 model id만 쓰는 것도 가능하지만, 여러 provider에 같은 id가 있으면 모호하므로 fallback으로 전환됩니다. model을 찾지 못하거나 API key가 없으면 기존처럼 heuristic proposal을 사용합니다.
 
-### 메시지 언어
+### 메시지 언어와 스타일
 
 `message.language`는 커밋 제목, 본문, footer에 사용할 언어를 정합니다. 다만 conventional commit의 type과 scope는 영어 토큰을 그대로 둡니다.
 
@@ -254,6 +256,29 @@ feat(test): 수학 헬퍼 import 갱신
 ```
 
 `"en"`, `"ko"`, 또는 `"Korean, concise"` 같은 커스텀 지시를 넣을 수 있습니다.
+
+`message.promptFile`은 커밋 메시지 스타일 지침을 담은 markdown/text 파일 경로입니다. 상대 경로는 Git repository root 기준으로 해석하고, 절대 경로와 `~/`도 사용할 수 있습니다.
+
+```json
+{
+  "message": {
+    "language": "ko",
+    "promptFile": ".pi/prompts/commit-message-style.md"
+  }
+}
+```
+
+예를 들어 `.pi/prompts/commit-message-style.md`에 다음처럼 적을 수 있습니다.
+
+```md
+커밋 메시지는 영어 표현을 한국어로 단어 단위 직역하지 않는다.
+diff와 파일 경로를 보고 실제 변경 의도를 자연스럽게 요약한다.
+
+나쁜 예: chore(config): 모델 공급자 기본값 갱신
+좋은 예: chore(config): /commit 기본 모델 설정 갱신
+```
+
+`message.instruction`은 짧은 추가 지시를 JSON 안에 직접 적을 때 사용합니다. 긴 지침은 `promptFile`로 분리하는 것을 권장합니다.
 
 ### lint 설정
 

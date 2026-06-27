@@ -1,6 +1,7 @@
 {
   "message": {
-    "language": "ko"
+    "language": "ko",
+    "promptFile": ".pi/prompts/commit-message-style.md"
   },
   "model": {
     "provider": "openai-codex",

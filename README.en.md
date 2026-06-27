@@ -12,6 +12,7 @@ Korean Version: [README.md](README.md)
 - Direct editing for commit subject, body, and footer.
 - Regenerate messages with an additional instruction.
 - Uses commitlint-style hints and `sem` when configured.
+- Configure commit message language and style prompts.
 - Select the pi model used for `/commit` proposals through JSON config.
 - Handles filenames with Unicode, spaces, and other special characters.
 - Choose priority between staged and unstaged changes.
@@ -194,7 +195,9 @@ Example:
 ```json
 {
   "message": {
-    "language": "ko"
+    "language": "ko",
+    "promptFile": ".pi/prompts/commit-message-style.md",
+    "instruction": "Summarize the diff intent in natural Korean commit subjects."
   },
   "model": {
     "provider": "openai",
@@ -243,7 +246,7 @@ A string shorthand is also supported.
 
 You can also specify only a model id, but if multiple providers expose the same id it is considered ambiguous and the extension falls back to the heuristic proposal. If the configured model cannot be found or has no API key, the extension uses the existing heuristic fallback.
 
-### Message language
+### Message language and style
 
 `message.language` controls the language used for the commit subject, body, and footer. Conventional commit type and scope tokens remain in English.
 
@@ -254,6 +257,29 @@ feat(test): 수학 헬퍼 import 갱신
 ```
 
 You can use `"en"`, `"ko"`, or a custom instruction such as `"Korean, concise"`.
+
+`message.promptFile` points to a markdown/text file containing commit message style guidance. Relative paths are resolved from the Git repository root. Absolute paths and `~/` are also supported.
+
+```json
+{
+  "message": {
+    "language": "ko",
+    "promptFile": ".pi/prompts/commit-message-style.md"
+  }
+}
+```
+
+For example, `.pi/prompts/commit-message-style.md` can contain:
+
+```md
+Do not translate English commit wording into Korean word by word.
+Read the diff and file paths, then summarize the actual change intent in natural Korean.
+
+Bad: chore(config): 모델 공급자 기본값 갱신
+Good: chore(config): /commit 기본 모델 설정 갱신
+```
+
+Use `message.instruction` for short inline additions. Prefer `promptFile` for longer style guides.
 
 ### Lint config
 
