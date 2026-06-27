@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 This project follows [Semantic Versioning](https://semver.org/). Release versions are managed with Git tags using the `vMAJOR.MINOR.PATCH` format.
 
+## [v0.1.1] - 2026-06-27
+
+### Changed
+
+- Updated usage guidance to clarify running `/commit` from a Git repository subdirectory.
+
 ## [v0.1.0] - 2026-06-15
 
 ### Added
@@ -20,4 +26,5 @@ This project follows [Semantic Versioning](https://semver.org/). Release version
 - Config support through project and global `pi-git-commit.json` files.
 - Commitlint-style hint support for generated messages.
 
+[v0.1.1]: https://github.com/sangcci/pi-git-commit/releases/tag/v0.1.1
 [v0.1.0]: https://github.com/sangcci/pi-git-commit/releases/tag/v0.1.0
